@@ -1,6 +1,6 @@
 /* SCULLCOM HOBBY ELECTRONICS
  * MILLIVOLT METER USING LTC2400 24bit ADC CHIP
- * Using the Version 2.x PCB designed by Barbouri (Greg Christenson)
+ * * Using the Version 2.x PCB designed by Barbouri (Greg Christenson)
  * https://www.barbouri.com/2019/08/07/millivolt-meter-version-2/
  * 
  * Software version 3.36
@@ -45,18 +45,18 @@
  *  
  *  - Version 3.12:
  *  - Added some tweaks and changes to allow a precise calibration of the reference voltage. This
- *    largely determines the linearity of the meter.
- *
+ *    largely determines the linearity of the meter. 
+ * 
  *  - Version 3.14 (Paul V):
  *  - Added remote logging of the measured values.
- *
- *  - Version 3.x - 3.34:
- *  - Modified May 2016, December 2018 by Barbouri
+ * 
+ *  - Version 3.x - 3.35:
+ *  - Modified May 2016, December 2018 by Barbouri, January 2022
  *  - for I2C display and pushbuttons 
  *  - Added includes Wire.h, Adafruit_MCP23017.h, Adafruit_RGBLCDShield.h 
  *  - https://github.com/adafruit/Adafruit-MCP23017-Arduino-Library 
  *  - remapped buttons from processor to I2C port expander
- *  - Compilled using Arduino 1.8.2
+ *  - Compilled using Arduino 1.8.19
  *  - Added COTO relay for 0-4 V measurement range on board version 2.11
  *  - Changed code to support 2-point calibration for both ranges.
  *  - Added range switch to front panel and connected to I2C port expander, with code to support.
@@ -66,7 +66,7 @@
  *  - Modified January 2022 by johanh
  *  - Added 0V calibration and removed v_ref
  *  - Using three curves from calibration points to calculate voltage
- *  
+ * 
  *   Software version:
  */
 String SW_VERSION = " Version 3.36";
@@ -108,7 +108,13 @@ byte x;                                  // ADC status register (bits 31 to 25) 
 const int RELAY = 4;                     // set Relay pin PD4 to Arduino pin D4
 int range = 1;                           // 1 is 0.000 to 40.095V, 0 is 0.000 to 4.010 input voltage
 
-//---- Calibration Factors
+//---- Voltage Reference (U3 ADR4540B) measurement
+                                         // Following measurements * were made AFTER a warm up
+                                         // This is a CRITICAL MEASUREMENT because it determines the linearity of the meter
+// float v_ref = 4.09664;                   ADR4540B Reference Voltage measured with a 6.5 digit calibrated multimeter *
+                                         // Re-check after 6 week burn-in and update
+
+//---- Calibration Factor
 float CA_0;                              // Calibration actual 0 --- averaged reading with shorted input --- stored in EEPROM
 float CA_1;                              // Calibration actual 1 --- averaged reading with 0.4096 volt input (10%) --- stored in EEPROM
 float CA_2;                              // Calibration actual 2 --- averaged reading with 3.6864 volt input (90%) --- stored in EEPROM
@@ -134,7 +140,12 @@ int fw_multiplier = 1;                   // multiplier for the filterWeight calc
 int noise_level = 48;                    // 96 is +/- 58.6 uV input voltage differential 40V range
 int noise_level4 = 480;                  // 480 is +/- 58.6 uV input voltage differential 4V range
 
-const int cal_adj_samples = 256;         // number of samples
+//---- Zero offset Calibration
+// int CalSetup = 0;                        calibration check
+// int DecPlaces = 0;                       limit to the number of decimal places on display
+// long zc_address4 = 0L;                   set EEPROM memory start address location 0..3
+// long zc_address40 = 10L;                 set EEPROM memory start address location 8..11
+const int cal_adj_samples = 512;         // number of samples
 
 //---- Display the result to the LCD
 int DecPlaces = 0;                       // limit to the number of decimal places on display
@@ -231,8 +242,7 @@ void setup() {
   EEPROM.get(M_1_address, M_1);          // get the first curve gradient from EEPROM
   EEPROM.get(M_2_address, M_2);          // get the second curve gradient from EEPROM
   EEPROM.get(M_3_address, M_3);          // get the third curve gradient from EEPROM
-
-
+  
   // ==>> for debugging & Testing, comment out for faster startup
   /*
   lcd.clear();                           // clear dislay
@@ -244,7 +254,6 @@ void setup() {
   lcd.print(CA_0, 6);                    // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (CA_0, 6);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("Cal Actual 4V Low");
@@ -253,7 +262,6 @@ void setup() {
   lcd.print(CA_1, 6);                    // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (CA_1, 6);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("Cal Actual 4V High");
@@ -262,7 +270,6 @@ void setup() {
   lcd.print(CA_2);                       // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (CA_2);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("M_1 4V Range  ");
@@ -271,7 +278,6 @@ void setup() {
   lcd.print(M_1, 6);                     // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (M_1, 6);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("M_2 4V Range");
@@ -280,7 +286,6 @@ void setup() {
   lcd.print(M_2);                        // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (M_2);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("Cal Actual 40V Low");
@@ -289,7 +294,6 @@ void setup() {
   lcd.print(CA_3);                       // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (CA_3);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("Cal Actual 40V High");
@@ -298,7 +302,6 @@ void setup() {
   lcd.print(CA_4);                       // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (CA_4);
   delay(1000);
-
   lcd.clear();                           // clear dislay
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   lcd.print("M_3 40V Range ");
@@ -307,11 +310,12 @@ void setup() {
   lcd.print(M_3, 6);                     // Briefly show calibration factor stored in EEPROM at switch on
   Serial.println (M_3, 6);
   delay(2000);
+  // ==>> for debugging & Testing, comment out for faster startup
   */
-
+  
   // Setup display with initial static text 
   lcd.clear();                           // Clear LCD screen for initial setup
-  lcd.setBacklight(TEAL);                // set LCD backlight color to Teal (Black during burn-in)
+  lcd.setBacklight(TEAL);               // set LCD backlight color to Teal (Black during burn-in)
   lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
   if (range == 1) lcd.print("40V ");     // print Range 40V
   if (range == 0) lcd.print("4V  ");     // print Range 4V
@@ -385,6 +389,7 @@ long Spi_Read(void){                     // SPI(Serial Peripheral Interface) rea
   }
 }
 
+
 /**************************************************************************************
  * Routine to calculate filter weight
  */
@@ -424,15 +429,14 @@ int filterWeightCalc(void){
     }
   }
 }
-
+ 
 /**************************************************************************************
  * Routine to run the voltage calibration against a voltage reference.
  * Short the input first to read 0V.
  * The calibration factor is created by connecting a 0.40960V reference 
- * to the input. This will enhance the linearity of the conversion.
- * 
+ * to the input. This will enhance the linearity of the conversion. 
  */
-void Cal4_Low() {
+void Cal4_Zero() {
   digitalWrite(RELAY, LOW);     // set Relay pin LOW to divide input by 1
   delay(100);
 
@@ -443,51 +447,9 @@ void Cal4_Low() {
   lcd.print("=Cal4-0V");
   lcd.setCursor(0,1);
   lcd.print("Short Input");
-  delay(10000);
+  delay(30000);
 
   int cal_counter = cal_adj_samples;                  // total number of readings
-
-  for (int i=0; i < cal_adj_samples; i++) {           // create a moving average with an IIR filter
-
-    adcread = Spi_Read();                             // seed the IIR filter
-
-    // Check if the new reading is outside the noise level band of the filtered result
-    // and dynamically adjust the filter weight accordingly.
-    filterWeightCalc();
-  
-    // update the filter weight; ranges from 4..128
-    filterWeight = 2 << fw_multiplier;
-    
-    average = average + (Spi_Read() - average) / (float)filterWeight;
-    // show the progress
-    lcd.setCursor(14,1);
-    if (cal_counter < 10){                            // get rid of the first decimal number               
-      lcd.print(" ");
-    }
-    lcd.print(cal_counter);
-    cal_counter--;
-  }
-
-  CA_0 = average;
-  EEPROM.put(CA_0_address, CA_0);     // store the calibration reading in EEPROM
-  
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Cal4-Low 0V:");
-  lcd.setCursor(0,1);
-  lcd.print(average, 2);
-  delay(5000);
-  lcd.clear();
-
-
-  // 0.40960V calibration
-  lcd.clear();
-  lcd.setBacklight(GREEN);                            // set LCD backlight to Green
-  lcd.setCursor(0,0);
-  lcd.print("=Cal4-Low");
-  lcd.setCursor(0,1);
-  lcd.print("Connect 0.40960");
-  delay(10000);
 
   cal_counter = cal_adj_samples;                  // total number of readings
 
@@ -504,9 +466,73 @@ void Cal4_Low() {
     
     average = average + (Spi_Read() - average) / (float)filterWeight;
     // show the progress
-    lcd.setCursor(14,1);
-    if (cal_counter < 10){                            // get rid of the first decimal number               
+    lcd.setCursor(13,0);
+    if (cal_counter < 100){                    // remove first decimal number               
       lcd.print(" ");
+        if (cal_counter < 10) lcd.print(" ");  // remove second decimal number
+    }
+    lcd.print(cal_counter);
+    cal_counter--;
+  }
+
+  CA_0 = average;
+  EEPROM.put(CA_0_address, CA_0);     // store the calibration reading in EEPROM
+  
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Cal4-Low 0V:");
+  lcd.setCursor(0,1);
+  lcd.print(average, 2);
+  delay(10000);
+  lcd.clear();
+  lcd.setBacklight(TEAL);                // set LCD backlight to Teal
+  lcd.setCursor(0,0);                    // set LCD cursor to column 0, row O (start of first line)
+  lcd.print("4V  ");                     // print Range 4V
+  lcd.setCursor(4,0);                    // set LCD cursor to column 4, row O (start of line after range)
+  lcd.print("mV Meter    ");             // print to display "mV Meter" and clear the rest
+  lcd.setCursor(14,1);                   // set LCD cursor to column 12, row 1 (start of "fw=")
+  lcd.print("f ");                       // print to display "fw=" and clear last digit
+  DecPlaces = 0;                         // if decimal places got changed, reset it
+  Monitor_batt();                        // the batt level display got erased, put it back
+  }
+
+/**************************************************************************************
+ * Routine to run the voltage calibration against a voltage reference.
+ * The calibration factor is created by connecting a 0.40960V reference 
+ * to the input. This will enhance the linearity of the conversion.
+ */
+void Cal4_Low() {
+  
+  // 0.40960V calibration
+  lcd.clear();
+  lcd.setBacklight(GREEN);                            // set LCD backlight to Green
+  lcd.setCursor(0,0);
+  lcd.print("=Cal4-Low");
+  lcd.setCursor(0,1);
+  lcd.print("Connect 0.40960");
+  delay(30000);
+
+  int cal_counter = cal_adj_samples;                  // total number of readings
+
+  cal_counter = cal_adj_samples;                  // total number of readings
+
+  for (int i=0; i < cal_adj_samples; i++) {           // create a moving average with an IIR filter
+
+    adcread = Spi_Read();                             // seed the IIR filter
+
+    // Check if the new reading is outside the noise level band of the filtered result
+    // and dynamically adjust the filter weight accordingly.
+    filterWeightCalc();
+  
+    // update the filter weight; ranges from 4..128
+    filterWeight = 2 << fw_multiplier;
+    
+    average = average + (Spi_Read() - average) / (float)filterWeight;
+    // show the progress
+    lcd.setCursor(13,0);
+    if (cal_counter < 100){                    // remove first decimal number               
+      lcd.print(" ");
+        if (cal_counter < 10) lcd.print(" ");  // remove second decimal number
     }
     lcd.print(cal_counter);
     cal_counter--;
@@ -529,7 +555,7 @@ void Cal4_Low() {
   lcd.print("4V  ");                     // print Range 4V
   lcd.setCursor(4,0);                    // set LCD cursor to column 4, row O (start of line after range)
   lcd.print("mV Meter    ");             // print to display "mV Meter" and clear the rest
-  lcd.setCursor(14,1);                   // set LCD cursor to column 12, row 1 (start of "fw=")
+  lcd.setCursor(13,1);                   // set LCD cursor to column 12, row 1 (start of "fw=")
   lcd.print("f ");                       // print to display "fw=" and clear last digit
   DecPlaces = 0;                         // if decimal places got changed, reset it
   Monitor_batt();                        // the batt level display got erased, put it back
@@ -568,9 +594,10 @@ void Cal4_High() {
     
     average = average + (Spi_Read() - average) / (float)filterWeight;
     // show the progress
-    lcd.setCursor(14,1);
-    if (cal_counter < 10){                            // get rid of the first decimal number               
+    lcd.setCursor(13,0);
+    if (cal_counter < 100){                    // remove first decimal number               
       lcd.print(" ");
+        if (cal_counter < 10) lcd.print(" ");  // remove second decimal number
     }
     lcd.print(cal_counter);
     cal_counter--;
@@ -636,9 +663,10 @@ void Cal40_Low() {
     
     average = average + (Spi_Read() - average) / (float)filterWeight;
     // show the progress
-    lcd.setCursor(14,1);
-    if (cal_counter < 10){                            // get rid of the first decimal number               
+    lcd.setCursor(13,0);
+    if (cal_counter < 100){                    // remove first decimal number               
       lcd.print(" ");
+        if (cal_counter < 10) lcd.print(" ");  // remove second decimal number
     }
     lcd.print(cal_counter);
     cal_counter--;
@@ -698,9 +726,10 @@ void Cal40_High() {
     
     average = average + (Spi_Read() - average) / (float)filterWeight;
     // show the progress
-    lcd.setCursor(14,1);
-    if (cal_counter < 10){                          // get rid of the first decimal number               
+    lcd.setCursor(13,0);
+    if (cal_counter < 100){                    // remove first decimal number               
       lcd.print(" ");
+        if (cal_counter < 10) lcd.print(" ");  // remove second decimal number
     }
     lcd.print(cal_counter);
     cal_counter--;
@@ -733,8 +762,9 @@ void Cal40_High() {
   Monitor_batt();                        // the batt level display got erased, put it back
 }
 
+
 /**************************************************************************************
- * Routine to check if the button was pressed, and depending on the length, decide what action to take
+ * routine to check if the button was pressed, and depending on the length, decide what action to take
  */
 void Button_press() {
    uint8_t buttons = lcd.readButtons();
@@ -744,22 +774,22 @@ void Button_press() {
         lcd.setCursor(15, 1);             // placeholder for the button press ack
         lcd.print("0");                   // back to default
 
-        if (buttons & BUTTON_SELECT) {
-          Cal40_High();
+        if (buttons & BUTTON_SELECT) {    // Zero Cal Position A0 (Zero Cal switch) 
+          Cal4_Zero();
         }
-        if (buttons & BUTTON_RIGHT) {     // 0.409600 V Cal Position A1 (A)
-            Cal4_Low();
+        if (buttons & BUTTON_RIGHT) {     // 0.409600 V Cal Position A1 (A position)
+          Cal4_Low();
         }
-        if (buttons & BUTTON_DOWN) {      // 3.68640 V Cal Position A2 (B)
+        if (buttons & BUTTON_DOWN) {      // 3.68640 V Cal Position A2 (B position)
           Cal4_High();
         }
-        if (buttons & BUTTON_UP) {        // 4.09600 V Cal Position A3 (C)
+        if (buttons & BUTTON_UP) {        // 4.09600 V Cal Position A3 (C position)
           Cal40_Low();
         }
-        if (buttons & BUTTON_LEFT) {      // 36.8640 V Cal Position A4 (D)  // A4 BUTTON_LEFT doesn't work JH 3.1.2022, use BUTTON_SELECT instead
+        if (buttons & BUTTON_LEFT) {      // 36.8640 V Cal Position A4 (D position)
           Cal40_High();
         }
-        if (buttons & BUTTON_MENU) {      // Range select Position A5
+        if (buttons & BUTTON_MENU) {      // Range select Position A5 (4V/40V range button)
           if (range == 1) {
             (range = 0);
             digitalWrite(RELAY, LOW);     // set Relay pin LOW to divide input by 1
@@ -787,7 +817,7 @@ void Button_press() {
 void Monitor_batt() {
   int i;
   long sum = 0;
-  int sensorValue;
+  int sensorValue; 
   for (i=0; i<(adc_samples); i++) {
     sensorValue = analogRead(batt) + adc_cal; // read from A0 and add the calibration factor
     delay(100);
@@ -861,7 +891,7 @@ void loop() {
    *  grain of filterWeight salt. ie. divide the new reading by the filterWeight factor (from 4..64)
    *  Note: average must be a float, otherwise there will be a compounded rounding error in the result.
    */
-  average = average + (adcread - average) / (float)filterWeight;
+  average = average + (adcread - average) / filterWeight;
 
   /* 
    *  Convert the filtered result to volts.
@@ -932,7 +962,7 @@ void loop() {
   lcd.print("  ");                       // add two blank spaces
   lcd.setCursor(15,1);
   lcd.print(fw_multiplier);              // show the filterweight exponent multiplier
-
+  
   ct_start = millis();                   // After this noisy display intermezzo, reset the LTC2400 conversion time counter
                                          // such that the ADC has the full 165 mSec to sample a new acquisition
                                          // during a quiet period.
